@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>PhishGuard - Options</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; max-width: 760px; }
+    input { width: 100%; padding: 8px; }
+    button { margin-top: 12px; padding: 8px 12px; }
+    .status { margin-top: 12px; }
+  </style>
+</head>
+<body>
+  <h1>Configuration de l’API PhishGuard</h1>
+  <p>Renseigne l’URL de ton backend FastAPI local.</p>
+  <label for="backendUrl">URL API</label>
+  <input id="backendUrl" type="text" placeholder="http://127.0.0.1:8000">
+  <button id="saveBtn">Enregistrer</button>
+  <div class="status" id="status"></div>
+  <script src="options.js"></script>
+</body>
+</html>

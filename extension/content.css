@@ -1,0 +1,52 @@
+#phishguard-root {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 2147483647;
+  font-family: Arial, sans-serif;
+}
+
+#phishguard-launcher {
+  border: 1px solid #555;
+  background: #111;
+  color: #fff;
+  padding: 10px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+#phishguard-panel {
+  display: none;
+  width: 420px;
+  max-height: 75vh;
+  overflow: auto;
+  margin-top: 10px;
+  background: #fff;
+  color: #111;
+  border: 1px solid #ccc;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+  padding: 14px;
+}
+
+#phishguard-panel h2, #phishguard-panel h3 {
+  margin: 0 0 10px 0;
+}
+
+.phg-row { margin-bottom: 10px; font-size: 13px; line-height: 1.4; }
+.phg-help { color: #333; }
+.phg-buttons { display: flex; gap: 8px; }
+.phg-buttons button { padding: 8px 10px; cursor: pointer; }
+.phg-badge { display: inline-block; margin-right: 8px; padding: 4px 8px; border: 1px solid #999; border-radius: 999px; }
+#phishguard-dropzone {
+  border: 2px dashed #888;
+  border-radius: 10px;
+  padding: 16px;
+  text-align: center;
+  cursor: pointer;
+  background: #fafafa;
+}
+#phishguard-dropzone.phg-dragover { background: #eef6ff; border-color: #2271b1; }
+.phg-error { color: #a40000; }
+.phg-ok { color: #0a6b1a; }
+#phishguard-result ul { margin: 8px 0 0 18px; padding: 0; }
