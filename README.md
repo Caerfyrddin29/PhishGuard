@@ -185,7 +185,6 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q
 - `licence.txt` : licences du code et de la documentation ;
 - `docs/architecture.md` : organisation du projet ;
 - `docs/ia_et_sources.md` : nature du code, sources et usage de l'IA ;
-- `docs/video_trophee_nsi.md` : plan de vidéo ;
 - `exemples/` : éléments d'exemple et d'aide à la démonstration.
 
 ## Limites connues
