@@ -1,3 +1,6 @@
+#Projet : PhishGuard
+#Auteurs : Équipe PhishGuard
+
 __all__ = [
     "hybrid",
     "text_analyzer",

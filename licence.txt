@@ -1,0 +1,7 @@
+Code source du projet :
+GNU General Public License version 3 or later (GPL v3+)
+
+Documentation, textes, présentations et contenus rédigés :
+Creative Commons Attribution - ShareAlike (CC BY-SA)
+
+Le projet est distribué selon les règles attendues pour les Trophées NSI 2026.

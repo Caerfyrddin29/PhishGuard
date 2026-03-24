@@ -1,37 +1,36 @@
 # PhishGuard
 
-PhishGuard is a **local phishing email analyzer** built around a FastAPI backend and a small Chrome extension.
-It analyzes exported **`.eml`** and **`.msg`** messages without requiring a cloud API or an external SaaS backend.
+PhishGuard est un projet de détection de mails de phishing.
+Il permet d'analyser des emails exportés au format `.eml` ou `.msg` afin d'estimer s'ils sont légitimes, suspects ou clairement malveillants.
 
-The current version is designed for **local triage and analyst assistance**:
-- it extracts message content and metadata,
-- runs several heuristic analyzers in parallel,
-- computes a **risk vs trust** score,
-- and returns a verdict with detailed reasons.
+Le projet a été pensé comme un **outil local d'analyse et d'aide à la décision**. Il ne remplace pas une passerelle de messagerie professionnelle, mais il permet de comprendre rapidement pourquoi un email paraît risqué grâce à un verdict, un score et des raisons détaillées.
 
-It is not a replacement for a full enterprise mail gateway, but it is practical for lab work, personal analysis, and analyst-guided review.
+## À quoi sert le projet ?
 
----
+Le phishing consiste à envoyer de faux emails qui imitent un service connu pour pousser une personne à cliquer sur un lien, ouvrir une pièce jointe ou transmettre des informations sensibles.
 
-## Features
+PhishGuard cherche à repérer ce type de message en combinant plusieurs analyses :
+- étude du texte ;
+- étude des en-têtes techniques ;
+- étude des liens présents dans le message ;
+- étude de certains indices de réputation ;
+- prise en compte de signaux rassurants comme l'authentification ou la cohérence entre l'expéditeur et les liens.
 
-- FastAPI backend with JSON endpoints
-- CLI for local `.eml` / `.msg` analysis
-- Chrome extension UI for supported webmail pages
-- `.eml` and `.msg` parsing
-- HTML URL extraction (`href`, `form action`, `meta refresh`, image/script/frame URLs)
-- Heuristic analyzers for text, headers, URLs, attachments, domains, reputation, ML, and benign signals
-- Optional local ML model (`joblib`)
-- Optional Hugging Face model
-- Optional network reputation lookups (enabled by default)
-- No API key required for the built-in reputation sources
+## Fonctionnalités principales
 
----
+- analyse de fichiers `.eml` et `.msg` ;
+- API locale développée avec FastAPI ;
+- documentation web interactive de l'API ;
+- analyse par modules spécialisés ;
+- verdict final parmi `legit`, `suspicious` et `phishing` ;
+- affichage des raisons principales de la décision ;
+- extension Chrome permettant d'envoyer un email exporté vers le backend local.
 
-## Repository layout
+## Structure du dépôt
 
 ```text
 .
+├── main.py
 ├── api.py
 ├── cli.py
 ├── extension/
@@ -43,489 +42,160 @@ It is not a replacement for a full enterprise mail gateway, but it is practical 
 │   ├── parser.py
 │   └── utils.py
 ├── tests/
-├── pyproject.toml
+├── docs/
+├── exemples/
+├── presentation.md
+├── licence.txt
 ├── requirements.txt
 └── requirements-hf.txt
 ```
 
----
+## Pré-requis
+
+- Python **3.10 minimum** ;
+- Python **3.11 ou plus récent recommandé** ;
+- `pip` ;
+- une connexion Internet peut améliorer certaines vérifications externes.
 
 ## Installation
 
-### Recommended setup
+### Sous Linux ou macOS
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install --upgrade pip
-pip install -e .
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 ```
 
-That installs the package in editable mode and is the cleanest way to run the API, CLI, and tests.
+### Sous Windows (PowerShell)
 
-### Alternative setup
+```powershell
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+## Lancement du projet
+
+### Point d'entrée principal
+
+Le point d'entrée principal demandé pour un projet Python est `main.py`.
+
+Afficher l'aide :
 
 ```bash
-pip install -r requirements.txt
+python main.py --help
 ```
 
-Use the editable install above if you intend to run tests or modify the code.
-
-### Optional Hugging Face dependencies
+Analyser un fichier email :
 
 ```bash
-pip install -r requirements-hf.txt
+python main.py chemin/vers/message.eml
 ```
 
----
-
-## Running the API
+Version JSON :
 
 ```bash
-uvicorn api:app --reload
+python main.py chemin/vers/message.eml --json
 ```
 
-Default base URL:
-
-```text
-http://127.0.0.1:8000
-```
-
-Health check:
+### Lancer l'API
 
 ```bash
-curl http://127.0.0.1:8000/health
+python -m uvicorn api:app --reload
 ```
 
-Interactive API documentation:
+Une fois l'API démarrée, ouvrir :
+- `http://127.0.0.1:8000/docs` pour l'interface Swagger ;
+- `http://127.0.0.1:8000/redoc` pour la documentation ReDoc.
 
-- Swagger UI: `http://127.0.0.1:8000/docs`
-- ReDoc: `http://127.0.0.1:8000/redoc`
+## Endpoints principaux de l'API
 
-The interactive docs describe every endpoint, input model, response model, field, and common error condition.
-They are the fastest way to explore the API in a browser and test requests live.
-
----
-
-## API endpoints
-
-| Method | Path | Description |
+| Méthode | Endpoint | Rôle |
 |---|---|---|
-| `GET` | `/health` | Liveness check |
-| `POST` | `/analyze/file` | Upload a `.eml` or `.msg` file |
-| `POST` | `/analyze/raw-eml` | Analyze raw EML text sent as JSON |
-| `POST` | `/analyze/base64-eml` | Analyze base64-encoded EML sent as JSON |
-| `POST` | `/analyze/components` | Analyze subject/text/headers/URLs without a full file |
-| `POST` | `/debug/parse` | Return extracted fields without scoring |
+| `GET` | `/health` | vérifie que l'API fonctionne |
+| `POST` | `/analyze/file` | analyse un fichier `.eml` ou `.msg` |
+| `POST` | `/analyze/raw-eml` | analyse un email brut envoyé en JSON |
+| `POST` | `/analyze/base64-eml` | analyse un email encodé en base64 |
+| `POST` | `/analyze/components` | analyse des composants d'email fournis séparément |
+| `POST` | `/debug/parse` | retourne l'extraction sans verdict final |
 
-### `POST /analyze/file`
+## Utilisation rapide via l'interface web
 
-Accepts multipart upload with a `.eml` or `.msg` file.
+1. lancer l'API ;
+2. ouvrir `http://127.0.0.1:8000/docs` ;
+3. choisir l'endpoint `/analyze/file` ;
+4. cliquer sur **Try it out** ;
+5. sélectionner un fichier `.eml` ou `.msg` ;
+6. cliquer sur **Execute** ;
+7. lire le verdict, le score et les raisons.
 
-Example:
+## Ce que renvoie l'analyse
 
-```bash
-curl -X POST \
-  -F "file=@sample.eml" \
-  http://127.0.0.1:8000/analyze/file
-```
+La réponse contient généralement :
+- les informations extraites du mail ;
+- un score ;
+- un verdict ;
+- un niveau de confiance ;
+- des sous-scores par module ;
+- une liste de raisons détaillées.
 
-### `POST /analyze/raw-eml`
+Exemple de champs importants :
+- `score` ;
+- `verdict` ;
+- `confidence` ;
+- `reasons`.
 
-```json
-{
-  "raw_eml": "From: ...\r\nSubject: ...\r\n\r\nBody"
-}
-```
+## Comment fonctionne l'analyse
 
-### `POST /analyze/base64-eml`
+Le projet suit un pipeline simple :
+1. lecture du fichier ;
+2. extraction du sujet, des en-têtes, du corps, des URLs et des pièces jointes ;
+3. passage dans plusieurs modules d'analyse ;
+4. combinaison des résultats ;
+5. production d'un verdict final.
 
-```json
-{
-  "base64_eml": "...",
-  "filename": "message.eml"
-}
-```
+Les principaux modules sont :
+- `text_analyzer.py` : analyse du contenu textuel ;
+- `header_analyzer.py` : analyse des en-têtes techniques ;
+- `url_analyzer.py` : analyse des liens ;
+- `domain_analyzer.py` : logique liée aux domaines ;
+- `reputation_analyzer.py` : réputation de certaines URLs ou infrastructures ;
+- `hybrid.py` : combinaison finale des résultats.
 
-### `POST /analyze/components`
+## Tests
 
-Useful for testing or integrating with another pipeline.
-
-```json
-{
-  "subject": "Action required",
-  "text": "Please review the account notice",
-  "raw_headers": "From: sender@example.com\nAuthentication-Results: ...",
-  "urls": ["https://example.com/login"]
-}
-```
-
----
-
-## Response format
-
-Typical response shape:
-
-```json
-{
-  "extracted_email": {
-    "subject": "...",
-    "sender": "...",
-    "urls": [],
-    "attachments": []
-  },
-  "analysis_result": {
-    "verdict": "phishing",
-    "score": 82,
-    "confidence": "high",
-    "analysis_status": "ok",
-    "sub_scores": {
-      "text": 12,
-      "headers": 16,
-      "url": 18,
-      "attachments": 0,
-      "ml": 6,
-      "domain": 10,
-      "reputation": 25,
-      "benign": -8
-    },
-    "reasons": [
-      "[header] ...",
-      "[url] ...",
-      "[reputation] ...",
-      "[benign] ..."
-    ],
-    "indicators": {
-      "ml_probability": 0.91,
-      "urls": ["..."],
-      "risk_total": 87,
-      "trust_total": 8,
-      "structural_flag": true
-    }
-  },
-  "extraction_warnings": [],
-  "analysis_status": "ok",
-  "confidence": "high"
-}
-```
-
-### Response fields
-
-#### Top-level
-- `extracted_email`: parsed message fields
-- `analysis_result`: final scoring output
-- `extraction_warnings`: parser fallbacks or decoding warnings
-- `analysis_status`: mirrors the analyzer status
-- `confidence`: mirrors the analyzer confidence
-
-#### `analysis_result`
-- `verdict`: `phishing`, `suspicious`, `legit`, or `inconclusive`
-- `score`: final **net** score from `0` to `100`
-- `confidence`: `low`, `medium`, or `high`
-- `analysis_status`: `ok` or `inconclusive`
-- `sub_scores`: module-level scores, with `benign` shown as a negative trust contribution
-- `reasons`: human-readable reasons from the analyzers
-- `indicators`: extra machine-facing details
-
-#### `sub_scores`
-Current keys:
-- `text`
-- `headers`
-- `url`
-- `attachments`
-- `ml`
-- `domain`
-- `reputation`
-- `benign`
-
-`benign` is returned as a **negative** value in `sub_scores` because it reduces the final score.
-
----
-
-## Scoring model
-
-PhishGuard does **not** use the old “sum everything and threshold it” model anymore.
-
-The current model is:
-
-1. Run analyzers in parallel
-2. Sum all **risk** analyzers
-3. Compute a separate **trust** score from benign signals
-4. Compute `net_score = clamp(risk_total - trust_total, 0..100)`
-5. Decide the verdict using both:
-   - the net score,
-   - and whether a **structural flag** was found
-
-### Risk analyzers
-- text
-- headers
-- URLs
-- attachments
-- ML
-- domain age / trust
-- reputation
-
-### Trust analyzer
-The benign analyzer reduces the score when the message looks coherent and operationally normal.
-
-Examples of trust signals:
-- SPF pass
-- DKIM pass
-- DMARC pass
-- all URLs use HTTPS
-- unsubscribe link present
-- sender domain aligns with the URL domains
-
-### Structural flags
-Some signals are treated as stronger than generic marketing noise.
-Examples include:
-- reputation hit
-- young domain
-- dangerous attachment
-- brand impersonation
-- homoglyph / typosquat behavior
-- IP-based URLs
-- forged reply-chain / threading mismatch
-
-### Verdict logic
-Current high-level behavior:
-- `phishing` if a strong structural condition is met with enough net score
-- `suspicious` for accumulated weak-to-medium signals
-- `legit` when the net score remains low
-- `inconclusive` when parsing/extraction failed badly enough that analysis would be unreliable
-
-This is intentional: a noisy newsletter should not become `phishing` just because it has many links and urgent wording.
-
----
-
-## Analyzer details
-
-### 1) Text analyzer
-Looks for phishing-oriented wording in the subject and body.
-
-Examples:
-- urgent wording
-- account / payment / verification language
-- suspicious subject patterns
-- high-risk phrases
-- medium-risk keywords
-- image-heavy / low-text body patterns
-
-Notes:
-- the text analyzer is intentionally **not sufficient on its own** to label a message as `phishing`
-- it is calibrated to avoid over-penalizing normal transactional and marketing mail
-
-### 2) Header analyzer
-Looks for structural inconsistencies in message headers.
-
-Examples:
-- missing key headers
-- free webmail sender in suspicious contexts
-- display-name brand spoofing
-- `Reply-To` mismatch
-- `Return-Path` mismatch
-- SPF / DKIM / DMARC failures
-- anomalous Received chain patterns
-- **forged reply-chain / thread mismatch** against branded domains in threading headers
-
-### 3) URL analyzer
-Looks at the extracted URLs and their structure.
-
-Examples:
-- unusually high URL volume
-- IP-based URLs
-- URL shorteners
-- suspicious TLDs
-- homoglyph / typosquat patterns
-- brand impersonation in domains
-- deep subdomains
-- non-HTTPS links
-- heavy encoding / obfuscation
-
-### 4) Attachment analyzer
-Flags risky attachment extensions.
-
-Examples:
-- `.exe`, `.js`, `.vbs`, `.scr`, `.bat`, `.ps1`
-- macro-enabled Office files
-- archive / disk-image style payloads when covered by the rules
-
-### 5) Domain analyzer
-Checks sender and URL domains using RDAP-first domain-age signals (with a quiet RDAP/WHOIS CLI fallback) and a trusted-domain list.
-
-Important notes:
-- only a limited number of domains are checked per message
-- timeouts are enforced to avoid hanging the analysis
-- domain logic uses `phishguard/domain_tools.py` to handle many national and multi-level suffixes such as:
-  - `.fr`
-  - `.es`
-  - `.uk`
-  - `.co.uk`
-  - `.com.br`
-  - `.co.jp`
-
-### 6) Reputation analyzer
-Uses lightweight external sources with no API key requirement.
-
-Current built-in sources:
-- DNSBL zones:
-  - Spamhaus DBL
-  - SURBL
-  - URIBL
-- URLhaus (`abuse.ch`)
-- OpenPhish feed
-
-Important notes:
-- network reputation is **enabled by default**
-- reputation failures are soft failures: network problems do not crash the analysis
-- the analyzer may contact external infrastructure during runtime when enabled
-
-### 7) ML analyzer
-Optional local model support:
-- local `joblib` model
-- optional Hugging Face model if explicitly enabled
-
-If no model is configured, this analyzer simply contributes `0`.
-
-### 8) Benign analyzer
-This is the main tolerance / anti-false-positive module.
-It reduces the final score when the message has coherent, routine, or authenticated characteristics.
-
----
-
-## Parsing behavior
-
-The parser:
-- normalizes raw EML bytes,
-- parses with `email` policies,
-- falls back when needed,
-- extracts plain text and HTML,
-- extracts URLs from both text and HTML structure,
-- extracts visible attachments and metadata.
-
-### HTML extraction
-The parser extracts URLs from:
-- `<a href>`
-- `<form action>`
-- `<img src>`
-- `<iframe src>`
-- `<script src>`
-- `meta refresh`
-
-### Attachments and storage
-By default:
-- uploaded temporary `.msg` files are deleted after parsing,
-- extracted attachments are **not** written to disk.
-
-If you explicitly set `PHISHGUARD_SAVE_ATTACHMENTS=1`, extracted attachments can be saved to `PHISHGUARD_ATTACHMENTS_DIR`.
-
----
-
-## CLI usage
+Pour lancer les tests :
 
 ```bash
-python cli.py path/to/message.eml
-python cli.py path/to/message.eml --json
+pytest -q
 ```
 
-Human-readable output includes:
-- file
-- subject
-- sender
-- verdict
-- score
-- confidence
-- top reasons
-
----
-
-## Chrome extension
-
-See [`extension/README.md`](extension/README.md).
-
-The extension is intentionally limited to a small set of supported webmail hosts in `manifest.json`.
-It uploads `.eml` and `.msg` files to the **local** backend only.
-
-Important nuance:
-- the extension sends the selected file to your local PhishGuard backend,
-- the backend may then perform **optional external reputation lookups** if that feature is enabled.
-
----
-
-## Configuration
-
-### Environment variables
-
-| Variable | Default | Description |
-|---|---:|---|
-| `PHISHGUARD_CORS_ORIGINS` | `*` | Comma-separated allowed origins. `*` works with the Chrome extension because credentials are disabled. |
-| `PHISHGUARD_MODEL_PATH` | auto-discovered `models/phishing_model.joblib` | Local joblib model path |
-| `PHISHGUARD_ENABLE_HF_ML` | `0` | Set to `1` to enable the Hugging Face model |
-| `PHISHGUARD_HF_MODEL` | `cybersectony/phishing-email-detection-distilbert_v2.4.1` | Hugging Face model ID |
-| `PHISHGUARD_TEMP_DIR` | `./tmp` | Temporary file directory |
-| `PHISHGUARD_ATTACHMENTS_DIR` | `./Attachments` | Attachment save directory when saving is enabled |
-| `PHISHGUARD_SAVE_ATTACHMENTS` | `0` | Set to `1` to persist extracted attachments |
-| `PHISHGUARD_MAX_UPLOAD_BYTES` | `10485760` | Max accepted upload size in bytes |
-| `PHISHGUARD_ENABLE_REPUTATION_NET` | `1` | Set to `0` to disable DNSBL / URLhaus / OpenPhish network checks |
-
----
-
-## Requirements
-
-Core dependencies are listed in `requirements.txt` and mirrored in `pyproject.toml`.
-
-Main runtime dependencies:
-- `fastapi`
-- `uvicorn`
-- `python-multipart`
-- `pydantic`
-- `beautifulsoup4`
-- `joblib`
-- `scikit-learn`
-- `extract-msg`
-- RDAP (via built-in HTTPS requests)
-
-Optional ML dependencies are in `requirements-hf.txt`.
-
----
-
-## Running tests
-
-Recommended command:
+Si un plugin tiers installé dans l'environnement perturbe `pytest`, utiliser :
 
 ```bash
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q
 ```
 
-This avoids interference from unrelated globally installed pytest plugins.
+## Fichiers complémentaires
 
----
+- `presentation.md` : présentation du projet pour le dossier technique ;
+- `licence.txt` : licences du code et de la documentation ;
+- `docs/architecture.md` : organisation du projet ;
+- `docs/ia_et_sources.md` : nature du code, sources et usage de l'IA ;
+- `docs/video_trophee_nsi.md` : plan de vidéo ;
+- `exemples/` : éléments d'exemple et d'aide à la démonstration.
 
-## Known limitations
+## Limites connues
 
-- heuristic scoring is still heuristic scoring: it is not a fully trained production classifier
-- reputation coverage depends on network availability and third-party feeds
-- the extension is not tested here against every webmail UI variation
-- domain parsing is more robust than a naive split, but it is still a lightweight in-project helper rather than a full public suffix database implementation
-- a legitimate but unusual email can still be marked `suspicious`
-- a fresh phishing campaign with very little infrastructure evidence can still look cleaner than it should
+- le projet reste heuristique ;
+- un email légitime très chargé en liens peut parfois paraître suspect ;
+- certaines vérifications externes dépendent du réseau ;
+- l'absence d'un signal négatif ne garantit jamais qu'un message soit sûr.
 
----
+## Licence
 
-## Security and privacy notes
-
-- the extension talks to your **local** backend
-- PhishGuard does **not** require a cloud API key
-- when reputation is enabled, the backend may query external reputation sources during analysis
-- extracted attachments are not persisted unless you opt in
-- temporary `.msg` files created for parsing are deleted after use
-
----
-
-## Versioning note
-
-This README documents the current calibrated scoring model with:
-- benign trust signals
-- structural flags
-- network reputation enabled by default
-- `.eml` and `.msg` support in the extension UI
+Le code source du projet est placé sous licence **GPL v3+**.
+Les documents et textes du dossier sont placés sous licence **CC BY-SA**.

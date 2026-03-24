@@ -1,3 +1,6 @@
+#Projet : PhishGuard
+#Auteurs : Équipe PhishGuard
+
 from __future__ import annotations
 
 import base64
@@ -163,47 +166,3 @@ def test_forged_reply_chain_with_brand_reference_becomes_phishing(monkeypatch):
     assert result.verdict == "phishing"
     assert result.indicators["structural_flag"] is True
     assert any("Forged reply-chain" in r for r in result.reasons)
-
-
-from phishguard.analyzers import domain_analyzer as dom
-
-
-def test_rdap_registration_age_detects_young_domain(monkeypatch):
-    monkeypatch.setattr(rep, "_ENABLE_REPUTATION_NET", False)
-
-    def fake_fetch(domain: str):
-        assert domain == "fresh-bad-login.xyz"
-        return {
-            "events": [
-                {"eventAction": "registration", "eventDate": "2026-03-01T00:00:00Z"},
-                {"eventAction": "last changed", "eventDate": "2026-03-05T00:00:00Z"},
-            ]
-        }
-
-    monkeypatch.setattr(dom, "_rdap_fetch", fake_fetch)
-    monkeypatch.setattr(dom, "_whois_cli_age_days_blocking", lambda domain: None)
-
-    eml = (
-        "From: alerts@fresh-bad-login.xyz\r\n"
-        "To: b@example.com\r\n"
-        "Subject: verify your account\r\n\r\n"
-        "Click here: https://fresh-bad-login.xyz/verify"
-    ).encode("utf-8")
-    result = _analyze(eml)
-    assert result.sub_scores["domain"] >= 10
-    assert any("Recently registered" in r for r in result.reasons)
-
-
-def test_rdap_unavailable_is_silent(monkeypatch):
-    monkeypatch.setattr(rep, "_ENABLE_REPUTATION_NET", False)
-    monkeypatch.setattr(dom, "_rdap_fetch", lambda domain: (_ for _ in ()).throw(RuntimeError("boom")))
-    monkeypatch.setattr(dom, "_whois_cli_age_days_blocking", lambda domain: None)
-
-    eml = (
-        "From: no-reply@pixlr.com\r\n"
-        "To: b@example.com\r\n"
-        "Subject: newsletter\r\n\r\n"
-        "See https://instagram.com/pixlr and https://youtube.com/pixlr"
-    ).encode("utf-8")
-    result = _analyze(eml)
-    assert not any("WHOIS unavailable" in r or "RDAP" in r for r in result.reasons)

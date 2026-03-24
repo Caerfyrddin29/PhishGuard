@@ -60,36 +60,65 @@
     const extracted = payload?.extracted_email || {};
     const reasons = Array.isArray(analysis.reasons) ? analysis.reasons.slice(0, 12) : [];
     const comp = analysis.sub_scores || {};
+    const score = Number.isFinite(analysis.score) ? analysis.score : 'N/A';
+    const confidence = analysis.confidence ?? payload.extraction_confidence ?? 'N/A';
+    const verdictKey = analysis.verdict || 'legit';
     const verdict = analysis.analysis_status === 'inconclusive'
       ? 'Analyse inconclusive'
-      : analysis.verdict === 'phishing'
-        ? 'Suspect (phishing)'
-        : analysis.verdict === 'suspicious'
-          ? 'Suspect'
+      : verdictKey === 'phishing'
+        ? 'Phishing détecté'
+        : verdictKey === 'suspicious'
+          ? 'Message suspect'
           : 'Plutôt légitime';
+    const badgeClass = verdictKey === 'phishing' ? 'phg-badge-danger' : verdictKey === 'suspicious' ? 'phg-badge-warn' : 'phg-badge-ok';
 
     result.innerHTML = `
-      <h3>Résultat</h3>
-      <div class="phg-row">
-        <span class="phg-badge">Verdict : ${escapeHtml(verdict)}</span>
-        <span class="phg-badge">Score : ${escapeHtml(analysis.score ?? 'N/A')}/100</span>
-        <span class="phg-badge">Confiance : ${escapeHtml(analysis.confidence ?? payload.extraction_confidence ?? 'N/A')}</span>
+      <h3>Résultat de l’analyse</h3>
+      <div class="phg-badge-row">
+        <span class="phg-badge ${badgeClass}">Verdict : ${escapeHtml(verdict)}</span>
+        <span class="phg-badge">Score : ${escapeHtml(score)}/100</span>
+        <span class="phg-badge">Confiance : ${escapeHtml(confidence)}</span>
       </div>
-      <div class="phg-row"><strong>Sujet :</strong> ${escapeHtml(extracted.subject || '(aucun)')}</div>
-      <div class="phg-row"><strong>Expéditeur :</strong> ${escapeHtml(extracted.sender || '(inconnu)')}</div>
-      <div class="phg-row"><strong>Type :</strong> ${escapeHtml(extracted.file_type || 'N/A')}</div>
-      <div class="phg-row"><strong>Sous-scores :</strong><br>
-        Texte: ${escapeHtml(comp.text ?? 0)} |
-        URL: ${escapeHtml(comp.url ?? 0)} |
-        Headers: ${escapeHtml(comp.headers ?? 0)} |
-        Domaine: ${escapeHtml(comp.domain ?? 0)} |
-        Réputation: ${escapeHtml(comp.reputation ?? 0)} |
-        Pièces jointes: ${escapeHtml(comp.attachments ?? 0)} |
-        ML: ${escapeHtml(comp.ml ?? 0)} |
-        Bénin: ${escapeHtml(comp.benign ?? 0)}
+
+      <div class="phg-grid phg-row">
+        <div class="phg-stat">
+          <div class="phg-stat-label">Verdict</div>
+          <div class="phg-stat-value">${escapeHtml(verdict)}</div>
+        </div>
+        <div class="phg-stat">
+          <div class="phg-stat-label">Score global</div>
+          <div class="phg-stat-value">${escapeHtml(score)}/100</div>
+        </div>
       </div>
-      <div class="phg-row"><strong>Raisons principales :</strong>
-        <ul>${reasons.map((r) => `<li>${escapeHtml(r)}</li>`).join('')}</ul>
+
+      <div class="phg-card phg-row">
+        <h4>Résumé du message</h4>
+        <div class="phg-meta-grid">
+          <div class="phg-meta-item"><strong>Sujet</strong><span>${escapeHtml(extracted.subject || '(aucun)')}</span></div>
+          <div class="phg-meta-item"><strong>Expéditeur</strong><span>${escapeHtml(extracted.sender || '(inconnu)')}</span></div>
+          <div class="phg-meta-item"><strong>Type de fichier</strong><span>${escapeHtml(extracted.file_type || 'N/A')}</span></div>
+        </div>
+      </div>
+
+      <div class="phg-card phg-row">
+        <h4>Sous-scores</h4>
+        <div class="phg-score-list">
+          ${[
+            ['Texte', comp.text ?? 0],
+            ['Headers', comp.headers ?? 0],
+            ['URLs', comp.url ?? 0],
+            ['Domaine', comp.domain ?? 0],
+            ['Réputation', comp.reputation ?? 0],
+            ['Pièces jointes', comp.attachments ?? 0],
+            ['ML', comp.ml ?? 0],
+            ['Bénin', comp.benign ?? 0],
+          ].map(([label, value]) => `<div class="phg-score-item"><span class="phg-score-label">${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join('')}
+        </div>
+      </div>
+
+      <div class="phg-card phg-row">
+        <h4>Raisons principales</h4>
+        ${reasons.length ? `<ul>${reasons.map((r) => `<li>${escapeHtml(r)}</li>`).join('')}</ul>` : '<div class="phg-empty">Aucune raison détaillée n’a été renvoyée par le backend.</div>'}
       </div>
     `;
   }
@@ -97,23 +126,29 @@
   const root = document.createElement('div');
   root.id = ROOT_ID;
   root.innerHTML = `
-    <button id="phishguard-launcher" type="button">Analyser un email</button>
+    <button id="phishguard-launcher" type="button" aria-expanded="false">Analyser un email</button>
     <div id="phishguard-panel" aria-live="polite">
-      <h2>PhishGuard</h2>
-      <div class="phg-row phg-help">
-        1. Télécharge le mail depuis ton webmail au format <strong>.eml</strong> ou <strong>.msg</strong>.<br>
-        2. Dépose-le ici ou clique pour le sélectionner.<br>
-        3. L’extension l’envoie au backend Python local pour analyse.
+      <div class="phg-panel-header">
+        <div>
+          <h2>PhishGuard</h2>
+          <div class="phg-panel-subtitle">Analyse locale de fichiers email <strong>.eml</strong> et <strong>.msg</strong></div>
+        </div>
+        <div class="phg-badge">Extension</div>
       </div>
-      <div class="phg-row" id="phishguard-dropzone">Déposer un fichier .eml / .msg ici ou cliquer pour sélectionner</div>
+      <div class="phg-card phg-row phg-help">
+        1. Télécharge le mail depuis ton webmail.
+        <br>2. Dépose le fichier ci-dessous ou clique pour le sélectionner.
+        <br>3. L’extension l’envoie au backend Python local et affiche le verdict avec les raisons principales.
+      </div>
+      <div class="phg-row" id="phishguard-dropzone"><span class="phg-dropzone-title">Déposer un fichier .eml / .msg</span><span class="phg-dropzone-subtitle">Cliquer pour sélectionner ou glisser-déposer depuis ton explorateur</span></div>
       <input id="phishguard-input" type="file" accept=".eml,.msg,message/rfc822,application/vnd.ms-outlook" style="display:none">
-      <div class="phg-row" id="phishguard-fileinfo"></div>
-      <div class="phg-row" id="phishguard-status"></div>
+      <div class="phg-row" id="phishguard-fileinfo">Aucun fichier sélectionné pour le moment.</div>
+      <div class="phg-row" id="phishguard-status">Prêt pour l’analyse.</div>
       <div class="phg-buttons phg-row">
-        <button id="phishguard-open-options" type="button">Configurer l’API</button>
+        <button id="phishguard-open-options" class="phg-primary-btn" type="button">Configurer l’API</button>
         <button id="phishguard-close" type="button">Fermer</button>
       </div>
-      <div id="phishguard-result"></div>
+      <div id="phishguard-result" class="phg-empty">Le résultat d’analyse s’affichera ici après l’envoi du fichier.</div>
     </div>
   `;
   document.documentElement.appendChild(root);
@@ -129,9 +164,11 @@
   const optionsBtn = root.querySelector('#phishguard-open-options');
 
   launcher.addEventListener('click', () => {
-    panel.style.display = panel.style.display === 'block' ? 'none' : 'block';
+    const open = panel.style.display !== 'block';
+    panel.style.display = open ? 'block' : 'none';
+    launcher.setAttribute('aria-expanded', String(open));
   });
-  closeBtn.addEventListener('click', () => { panel.style.display = 'none'; });
+  closeBtn.addEventListener('click', () => { panel.style.display = 'none'; launcher.setAttribute('aria-expanded', 'false'); });
   optionsBtn.addEventListener('click', () => { if (chrome.runtime.openOptionsPage) chrome.runtime.openOptionsPage(); });
   dropzone.addEventListener('click', () => input.click());
   input.addEventListener('change', () => uploadFile(input.files?.[0]));

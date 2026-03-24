@@ -1,14 +1,14 @@
+#Projet : PhishGuard
+#Auteurs : Équipe PhishGuard
+
 from __future__ import annotations
 
 import concurrent.futures
 import datetime
-import json
-import subprocess
+import re
 import time
 from dataclasses import dataclass
-from email.utils import parsedate_to_datetime
 from urllib.parse import urlparse
-from urllib.request import Request, urlopen
 
 from ..config import Settings
 from ..models import ExtractedEmailData
@@ -33,16 +33,14 @@ _TRUSTED_DOMAINS = {
 
 _YOUNG_THRESHOLD_DAYS = 180
 _VERY_YOUNG_THRESHOLD_DAYS = 30
-_RDAP_TIMEOUT_SECONDS = 5
-_TOTAL_DOMAIN_AGE_BUDGET_SECONDS = 12
-_RDAP_BASE_URL = "https://rdap.org/domain/"
-_DEFAULT_HEADERS = {
-    "Accept": "application/rdap+json, application/json",
-    "User-Agent": "PhishGuard/3.2 (+local-analysis)",
-}
+# BUG FIX: strict per-domain timeout to prevent the API from hanging
+_WHOIS_TIMEOUT_SECONDS = 5
+# BUG FIX: overall wall-clock budget for ALL WHOIS calls combined
+_TOTAL_WHOIS_BUDGET_SECONDS = 12
 
 
 def _strip_www(domain: str) -> str:
+    """BUG FIX: removeprefix, not lstrip."""
     return domain.removeprefix("www.")
 
 
@@ -59,6 +57,7 @@ def _get_domain_from_value(value: str) -> str:
 
 
 def _registrable_domain(domain: str) -> str:
+    """BUG FIX: use _strip_www helper."""
     parts = _strip_www(domain).split(".")
     if len(parts) >= 2:
         if parts[-2] in ("co", "com", "net", "org", "gov", "edu", "ac") and len(parts) >= 3:
@@ -68,125 +67,65 @@ def _registrable_domain(domain: str) -> str:
 
 
 def _is_trusted(domain: str) -> bool:
-    return domain in _TRUSTED_DOMAINS or any(domain.endswith("." + t) for t in _TRUSTED_DOMAINS)
+    return domain in _TRUSTED_DOMAINS or any(
+        domain.endswith("." + t) for t in _TRUSTED_DOMAINS
+    )
 
 
-def _coerce_datetime(value: object) -> datetime.datetime | None:
-    if isinstance(value, datetime.datetime):
-        return value if value.tzinfo else value.replace(tzinfo=datetime.timezone.utc)
-    if isinstance(value, datetime.date):
-        return datetime.datetime.combine(value, datetime.time.min, tzinfo=datetime.timezone.utc)
-    if not isinstance(value, str):
-        return None
-
-    raw = value.strip()
-    if not raw:
-        return None
-
+def _whois_age_days_blocking(domain: str) -> int | None:
+    """Blocking WHOIS lookup — always called inside a thread with timeout."""
+    # Attempt 1: python-whois library
     try:
-        dt = parsedate_to_datetime(raw)
-        return dt if dt.tzinfo else dt.replace(tzinfo=datetime.timezone.utc)
+        import whois  # type: ignore
+        w = whois.whois(domain)
+        created = w.creation_date
+        if isinstance(created, list):
+            created = created[0]
+        if isinstance(created, (datetime.datetime, datetime.date)):
+            if isinstance(created, datetime.datetime):
+                age = (datetime.datetime.utcnow() - created).days
+            else:
+                age = (datetime.date.today() - created).days
+            return max(0, age)
     except Exception:
         pass
 
-    normalized = raw.replace("Z", "+00:00")
+    # Attempt 2: system whois CLI
     try:
-        dt = datetime.datetime.fromisoformat(normalized)
-        return dt if dt.tzinfo else dt.replace(tzinfo=datetime.timezone.utc)
-    except Exception:
-        return None
-
-
-def _age_days_from_dt(dt: datetime.datetime) -> int:
-    now = datetime.datetime.now(datetime.timezone.utc)
-    return max(0, (now - dt.astimezone(datetime.timezone.utc)).days)
-
-
-def _parse_rdap_age_days(payload: dict) -> int | None:
-    events = payload.get("events") or []
-    preferred_actions = {"registration", "registered", "creation", "created"}
-
-    best: datetime.datetime | None = None
-    fallback: datetime.datetime | None = None
-    for event in events:
-        if not isinstance(event, dict):
-            continue
-        dt = _coerce_datetime(event.get("eventDate"))
-        if not dt:
-            continue
-        action = str(event.get("eventAction") or "").strip().lower()
-        if action in preferred_actions:
-            if best is None or dt < best:
-                best = dt
-        elif fallback is None or dt < fallback:
-            fallback = dt
-
-    chosen = best or fallback
-    return _age_days_from_dt(chosen) if chosen else None
-
-
-def _rdap_fetch(domain: str) -> dict | None:
-    req = Request(_RDAP_BASE_URL + domain, headers=_DEFAULT_HEADERS)
-    with urlopen(req, timeout=_RDAP_TIMEOUT_SECONDS) as resp:  # nosec B310: fixed https endpoint
-        charset = resp.headers.get_content_charset() or "utf-8"
-        body = resp.read().decode(charset, errors="replace")
-    data = json.loads(body)
-    return data if isinstance(data, dict) else None
-
-
-def _rdap_age_days_blocking(domain: str) -> int | None:
-    try:
-        payload = _rdap_fetch(domain)
-        if payload:
-            return _parse_rdap_age_days(payload)
-    except Exception:
-        return None
-    return None
-
-
-def _whois_cli_age_days_blocking(domain: str) -> int | None:
-    try:
+        import subprocess
         result = subprocess.run(
             ["whois", domain],
-            capture_output=True,
-            text=True,
-            timeout=_RDAP_TIMEOUT_SECONDS,
-            check=False,
+            capture_output=True, text=True, timeout=_WHOIS_TIMEOUT_SECONDS
         )
+        date_pat = re.compile(
+            r"(?:creation date|created|registered on|domain registered)\s*[:\s]+([0-9T:\-\.Z ]+)",
+            re.IGNORECASE,
+        )
+        m = date_pat.search(result.stdout)
+        if m:
+            raw = m.group(1).strip()
+            for fmt in ("%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%d", "%d-%b-%Y",
+                        "%Y.%m.%d", "%d/%m/%Y", "%Y-%m-%dT%H:%M:%S"):
+                try:
+                    dt = datetime.datetime.strptime(raw[:19], fmt)
+                    return max(0, (datetime.datetime.utcnow() - dt).days)
+                except ValueError:
+                    continue
     except Exception:
-        return None
+        pass
 
-    lines = result.stdout.splitlines()
-    markers = (
-        "creation date:",
-        "created:",
-        "created on:",
-        "registered on:",
-        "domain registered:",
-    )
-    for line in lines:
-        lower = line.lower().strip()
-        if not lower.startswith(markers):
-            continue
-        raw = line.split(":", 1)[1].strip() if ":" in line else ""
-        dt = _coerce_datetime(raw)
-        if dt:
-            return _age_days_from_dt(dt)
     return None
 
 
-def _domain_age_days_blocking(domain: str) -> int | None:
-    age = _rdap_age_days_blocking(domain)
-    if age is not None:
-        return age
-    return _whois_cli_age_days_blocking(domain)
-
-
-def _domain_age_days(domain: str) -> int | None:
+def _whois_age_days(domain: str) -> int | None:
+    """
+    BUG FIX: run WHOIS in a thread so we can enforce a hard wall-clock timeout.
+    Without this, whois library or CLI can hang for 30+ seconds.
+    """
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-        future = ex.submit(_domain_age_days_blocking, domain)
+        future = ex.submit(_whois_age_days_blocking, domain)
         try:
-            return future.result(timeout=_RDAP_TIMEOUT_SECONDS)
+            return future.result(timeout=_WHOIS_TIMEOUT_SECONDS)
         except (concurrent.futures.TimeoutError, Exception):
             return None
 
@@ -208,21 +147,26 @@ def analyze_domains(extracted: ExtractedEmailData, settings: Settings) -> Domain
         if d and d not in seen and not _is_trusted(d):
             seen.add(d)
             domains_to_check.append(d)
-        if len(domains_to_check) >= 4:
+        if len(domains_to_check) >= 4:  # hard cap: sender + 3 URL domains
             break
 
     if not domains_to_check:
         return DomainSignals(score=0, reasons=[])
 
     young_domains: list[str] = []
+    failed_lookup: list[str] = []
+
     wall_start = time.monotonic()
 
     for domain in domains_to_check:
-        if time.monotonic() - wall_start > _TOTAL_DOMAIN_AGE_BUDGET_SECONDS:
-            break
+        # BUG FIX: respect overall budget
+        if time.monotonic() - wall_start > _TOTAL_WHOIS_BUDGET_SECONDS:
+            failed_lookup.append(f"{domain} (budget exhausted)")
+            continue
 
-        age_days = _domain_age_days(domain)
+        age_days = _whois_age_days(domain)
         if age_days is None:
+            failed_lookup.append(domain)
             continue
 
         if age_days < _VERY_YOUNG_THRESHOLD_DAYS:
@@ -234,5 +178,9 @@ def analyze_domains(extracted: ExtractedEmailData, settings: Settings) -> Domain
 
     if young_domains:
         reasons.append(f"[domain] Recently registered: {', '.join(young_domains)}")
+    if failed_lookup and not young_domains:
+        reasons.append(
+            f"[domain] WHOIS unavailable for: {', '.join(failed_lookup[:3])} (inconclusive)"
+        )
 
     return DomainSignals(score=min(30, score), reasons=reasons)

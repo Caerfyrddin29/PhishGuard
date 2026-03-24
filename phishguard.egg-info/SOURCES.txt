@@ -1,4 +1,5 @@
 README.md
+licence.txt
 pyproject.toml
 phishguard/__init__.py
 phishguard/config.py

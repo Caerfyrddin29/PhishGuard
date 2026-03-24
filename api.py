@@ -1,3 +1,6 @@
+#Projet : PhishGuard
+#Auteurs : Équipe PhishGuard
+
 from __future__ import annotations
 
 import base64
@@ -7,6 +10,8 @@ from dataclasses import asdict, is_dataclass
 from typing import Any, Literal
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
+from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -71,8 +76,8 @@ app = FastAPI(
     version="3.2.0",
     summary="Local phishing-analysis API for .eml and .msg email messages.",
     description=API_DESCRIPTION,
-    docs_url="/docs",
-    redoc_url="/redoc",
+    docs_url=None,
+    redoc_url=None,
     openapi_tags=[
         {"name": "system", "description": "Operational endpoints such as health checks."},
         {"name": "analysis", "description": "Primary phishing-analysis endpoints returning extracted data and verdicts."},
@@ -91,6 +96,163 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+DOCS_HEAD = """
+<style>
+:root {
+  --phg-bg: #0f172a;
+  --phg-bg-soft: #111827;
+  --phg-surface: #ffffff;
+  --phg-surface-soft: #f8fafc;
+  --phg-border: #dbe4f0;
+  --phg-text: #0f172a;
+  --phg-muted: #475569;
+  --phg-accent: #7c3aed;
+  --phg-accent-2: #4f46e5;
+  --phg-code: #0f172a;
+}
+body, .swagger-ui {
+  background: linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%) !important;
+  color: var(--phg-text) !important;
+}
+.swagger-ui .topbar {
+  background: linear-gradient(135deg, var(--phg-accent), var(--phg-accent-2)) !important;
+  box-shadow: 0 16px 38px rgba(79, 70, 229, 0.22);
+}
+.swagger-ui .topbar .download-url-wrapper { display: none !important; }
+.swagger-ui .topbar-wrapper img { content: url('https://fastapi.tiangolo.com/img/logo-margin/logo-teal.png'); max-height: 34px; }
+.swagger-ui .information-container.wrapper,
+.swagger-ui .scheme-container,
+.swagger-ui .wrapper {
+  max-width: 1240px !important;
+}
+.swagger-ui .information-container { padding-top: 26px !important; }
+.swagger-ui .info { margin: 0 0 30px 0 !important; }
+.swagger-ui .info .title {
+  font-size: 38px !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.03em;
+  color: var(--phg-text) !important;
+}
+.swagger-ui .info .base-url {
+  background: rgba(124, 58, 237, 0.08) !important;
+  color: var(--phg-accent) !important;
+  border: 1px solid rgba(124, 58, 237, 0.12) !important;
+  border-radius: 999px !important;
+  padding: 6px 12px !important;
+}
+.swagger-ui .info p, .swagger-ui .info li, .swagger-ui .renderedMarkdown p, .swagger-ui .renderedMarkdown li {
+  color: var(--phg-muted) !important;
+  line-height: 1.75 !important;
+  font-size: 15px !important;
+}
+.swagger-ui .scheme-container {
+  background: rgba(255,255,255,0.82) !important;
+  border: 1px solid var(--phg-border);
+  border-radius: 20px;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
+  padding: 18px 24px !important;
+  margin: 16px auto 28px !important;
+}
+.swagger-ui .opblock-tag {
+  border-bottom: 1px solid rgba(148,163,184,0.18) !important;
+  padding: 20px 0 14px !important;
+  color: var(--phg-text) !important;
+  font-size: 24px !important;
+  font-weight: 800 !important;
+}
+.swagger-ui .opblock {
+  border-radius: 20px !important;
+  border-width: 1px !important;
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.06);
+  margin-bottom: 18px !important;
+  overflow: hidden;
+}
+.swagger-ui .opblock .opblock-summary {
+  padding: 18px 20px !important;
+}
+.swagger-ui .opblock .opblock-summary-method {
+  border-radius: 999px !important;
+  min-width: 80px !important;
+  text-align: center;
+  font-weight: 800 !important;
+}
+.swagger-ui .opblock .opblock-summary-path,
+.swagger-ui .opblock .opblock-summary-description {
+  font-size: 15px !important;
+}
+.swagger-ui .opblock-body { padding: 0 20px 20px !important; }
+.swagger-ui section.models {
+  border: 1px solid var(--phg-border);
+  border-radius: 24px;
+  background: rgba(255,255,255,0.9);
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.07);
+  padding: 10px 16px 16px !important;
+}
+.swagger-ui .model-box, .swagger-ui .highlight-code, .swagger-ui .microlight, .swagger-ui pre {
+  border-radius: 16px !important;
+}
+.swagger-ui .btn {
+  border-radius: 12px !important;
+  font-weight: 700 !important;
+}
+.swagger-ui input[type=text], .swagger-ui textarea, .swagger-ui select {
+  border-radius: 12px !important;
+  border: 1px solid var(--phg-border) !important;
+}
+.swagger-ui .response-col_status { font-weight: 700 !important; }
+.swagger-ui .responses-inner h4, .swagger-ui .responses-inner h5, .swagger-ui .opblock-section-header h4 {
+  color: var(--phg-text) !important;
+}
+.redoc-wrap { background: linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%) !important; }
+.menu-content {
+  background: rgba(255,255,255,0.94) !important;
+  border-right: 1px solid var(--phg-border) !important;
+}
+.menu-content label, .menu-content span, .menu-content a, .menu-content div { color: var(--phg-text) !important; }
+.api-info {
+  background: transparent !important;
+}
+.api-info h1, .api-info h2, .api-info h3 {
+  color: var(--phg-text) !important;
+  letter-spacing: -0.02em;
+}
+.api-info p, .api-info li, .api-content p, .api-content li {
+  color: var(--phg-muted) !important;
+  line-height: 1.75 !important;
+}
+.api-content pre, .api-content code { border-radius: 16px !important; }
+@media (max-width: 900px) {
+  .swagger-ui .info .title { font-size: 30px !important; }
+  .swagger-ui .opblock .opblock-summary { padding: 16px !important; }
+}
+</style>
+<script>
+window.addEventListener('load', () => {
+  const interval = setInterval(() => {
+    const title = document.querySelector('.swagger-ui .info .title');
+    if (title && !document.getElementById('phg-docs-intro')) {
+      const intro = document.createElement('div');
+      intro.id = 'phg-docs-intro';
+      intro.style.cssText = 'margin:16px 0 28px;padding:18px 20px;border-radius:18px;background:rgba(124,58,237,0.08);border:1px solid rgba(124,58,237,0.12);color:#334155;line-height:1.7;font-size:15px;';
+      intro.innerHTML = '<strong style="display:block;color:#0f172a;font-size:16px;margin-bottom:8px;">Guide rapide</strong>Utilise <code style="background:#fff;padding:2px 6px;border-radius:8px;border:1px solid #e2e8f0;">POST /analyze/file</code> pour un fichier <code style="background:#fff;padding:2px 6px;border-radius:8px;border:1px solid #e2e8f0;">.eml</code> ou <code style="background:#fff;padding:2px 6px;border-radius:8px;border:1px solid #e2e8f0;">.msg</code>. <code style="background:#fff;padding:2px 6px;border-radius:8px;border:1px solid #e2e8f0;">/analyze/base64-eml</code> est pratique pour une extension navigateur. Le résultat contient le verdict, le score, la confiance et les raisons détaillées.';
+      title.parentElement.appendChild(intro);
+    }
+    const redocTitle = document.querySelector('.api-info');
+    if (redocTitle && !document.getElementById('phg-redoc-intro')) {
+      const intro = document.createElement('div');
+      intro.id = 'phg-redoc-intro';
+      intro.style.cssText = 'margin:18px 0 26px;padding:18px 20px;border-radius:18px;background:rgba(124,58,237,0.08);border:1px solid rgba(124,58,237,0.12);color:#334155;line-height:1.75;font-size:15px;';
+      intro.innerHTML = '<strong style="display:block;color:#0f172a;font-size:16px;margin-bottom:8px;">Comment utiliser cette API</strong>Commence par <code style="background:#fff;padding:2px 6px;border-radius:8px;border:1px solid #e2e8f0;">GET /health</code>, puis utilise <code style="background:#fff;padding:2px 6px;border-radius:8px;border:1px solid #e2e8f0;">POST /analyze/file</code> pour un message réel. Les autres endpoints servent aux intégrations plus spécialisées.';
+      redocTitle.appendChild(intro);
+    }
+    if (document.querySelector('.swagger-ui') || document.querySelector('.redoc-wrap')) clearInterval(interval);
+  }, 120);
+});
+</script>
+"""
+
 
 
 def _to_jsonable(obj: Any):
@@ -417,3 +579,38 @@ def _custom_openapi():
 
 
 app.openapi = _custom_openapi
+
+
+@app.get("/docs", include_in_schema=False)
+def overridden_swagger() -> HTMLResponse:
+    html = get_swagger_ui_html(
+        openapi_url=app.openapi_url,
+        title=f"{app.title} - Swagger UI",
+        swagger_favicon_url="https://fastapi.tiangolo.com/img/favicon.png",
+        swagger_ui_parameters={
+            "persistAuthorization": True,
+            "defaultModelsExpandDepth": 1,
+            "defaultModelExpandDepth": 2,
+            "displayRequestDuration": True,
+            "filter": True,
+            "syntaxHighlight.theme": "obsidian",
+            "docExpansion": "list",
+            "tryItOutEnabled": True,
+        },
+    )
+    body = html.body.decode("utf-8").replace("</head>", DOCS_HEAD + "</head>")
+    safe_headers = {k: v for k, v in dict(html.headers).items() if k.lower() != "content-length"}
+    return HTMLResponse(body, status_code=html.status_code, headers=safe_headers)
+
+
+@app.get("/redoc", include_in_schema=False)
+def overridden_redoc() -> HTMLResponse:
+    html = get_redoc_html(
+        openapi_url=app.openapi_url,
+        title=f"{app.title} - ReDoc",
+        redoc_favicon_url="https://fastapi.tiangolo.com/img/favicon.png",
+        with_google_fonts=True,
+    )
+    body = html.body.decode("utf-8").replace("</head>", DOCS_HEAD + "</head>")
+    safe_headers = {k: v for k, v in dict(html.headers).items() if k.lower() != "content-length"}
+    return HTMLResponse(body, status_code=html.status_code, headers=safe_headers)
