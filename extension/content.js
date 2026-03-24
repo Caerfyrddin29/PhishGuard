@@ -1,32 +1,6 @@
 (() => {
   const ROOT_ID = 'phishguard-root';
-  const MAIL_HOST_PATTERNS = [
-    /mail\.google\.com$/i,
-    /outlook\.office\.com$/i,
-    /outlook\.live\.com$/i,
-    /mail\.yahoo\.com$/i,
-    /proton\.me$/i,
-    /mail\.proton\.me$/i,
-    /mail\.protonmail\.com$/i,
-    /roundcube/i,
-    /webmail/i
-  ];
-
-  function shouldInject() {
-    const host = location.hostname || '';
-    const url = location.href || '';
-    const title = document.title || '';
-    if (MAIL_HOST_PATTERNS.some((rx) => rx.test(host))) return true;
-    return /mail|inbox|gmail|outlook|webmail/i.test(host + ' ' + url + ' ' + title);
-  }
-
-  if (!shouldInject()) return;
   if (document.getElementById(ROOT_ID)) return;
-
-  function setStatus(text, isError = false) {
-    status.textContent = text || '';
-    status.className = isError ? 'phg-error' : 'phg-ok';
-  }
 
   function escapeHtml(value) {
     return String(value ?? '')
@@ -37,12 +11,16 @@
       .replace(/'/g, '&#039;');
   }
 
+  function setStatus(text, isError = false) {
+    status.textContent = text || '';
+    status.className = isError ? 'phg-error' : 'phg-ok';
+  }
+
   async function uploadFile(file) {
     if (!file) return;
-
     const ext = (file.name.split('.').pop() || '').toLowerCase();
-    if (!['eml'].includes(ext)) {
-      setStatus('Format non supporté. Choisis un fichier .eml', true);
+    if (!['eml', 'msg'].includes(ext)) {
+      setStatus('Format non supporté. Choisis un fichier .eml ou .msg', true);
       return;
     }
 
@@ -52,18 +30,12 @@
 
     try {
       const buffer = await file.arrayBuffer();
-      const bytes = new Uint8Array(buffer);
-      let binary = '';
-      for (let i = 0; i < bytes.byteLength; i++) {
-        binary += String.fromCharCode(bytes[i]);
-      }
-      const base64 = btoa(binary);
       chrome.runtime.sendMessage(
         {
           type: 'PHISHGUARD_UPLOAD_FILE',
           filename: file.name,
-          mimeType: file.type || 'message/rfc822',
-          base64
+          mimeType: file.type || (ext === 'msg' ? 'application/vnd.ms-outlook' : 'message/rfc822'),
+          bytes: Array.from(new Uint8Array(buffer)),
         },
         (response) => {
           if (chrome.runtime.lastError) {
@@ -75,7 +47,7 @@
             return;
           }
           renderResult(response.result);
-          setStatus('Analyse terminée. Le backend a supprimé le fichier temporaire.');
+          setStatus('Analyse terminée. Le fichier temporaire backend a été supprimé ; les pièces jointes ne sont sauvegardées que si le backend a été configuré pour cela.');
         }
       );
     } catch (error) {
@@ -106,7 +78,6 @@
       <div class="phg-row"><strong>Sujet :</strong> ${escapeHtml(extracted.subject || '(aucun)')}</div>
       <div class="phg-row"><strong>Expéditeur :</strong> ${escapeHtml(extracted.sender || '(inconnu)')}</div>
       <div class="phg-row"><strong>Type :</strong> ${escapeHtml(extracted.file_type || 'N/A')}</div>
-      <div class="phg-row"><strong>Statut d'analyse :</strong> ${escapeHtml(analysis.analysis_status || payload.analysis_status || 'N/A')}</div>
       <div class="phg-row"><strong>Sous-scores :</strong><br>
         Texte: ${escapeHtml(comp.text ?? 0)} |
         URL: ${escapeHtml(comp.url ?? 0)} |
@@ -114,7 +85,8 @@
         Domaine: ${escapeHtml(comp.domain ?? 0)} |
         Réputation: ${escapeHtml(comp.reputation ?? 0)} |
         Pièces jointes: ${escapeHtml(comp.attachments ?? 0)} |
-        ML: ${escapeHtml(comp.ml ?? 0)}
+        ML: ${escapeHtml(comp.ml ?? 0)} |
+        Bénin: ${escapeHtml(comp.benign ?? 0)}
       </div>
       <div class="phg-row"><strong>Raisons principales :</strong>
         <ul>${reasons.map((r) => `<li>${escapeHtml(r)}</li>`).join('')}</ul>
@@ -125,16 +97,16 @@
   const root = document.createElement('div');
   root.id = ROOT_ID;
   root.innerHTML = `
-    <button id="phishguard-launcher" type="button">Analyser un .eml</button>
+    <button id="phishguard-launcher" type="button">Analyser un email</button>
     <div id="phishguard-panel" aria-live="polite">
       <h2>PhishGuard</h2>
       <div class="phg-row phg-help">
-        1. Télécharge le mail depuis ton webmail au format <strong>.eml</strong>.<br>
+        1. Télécharge le mail depuis ton webmail au format <strong>.eml</strong> ou <strong>.msg</strong>.<br>
         2. Dépose-le ici ou clique pour le sélectionner.<br>
-        3. L’extension l’envoie au backend Python, qui l’analyse et supprime le fichier temporaire.
+        3. L’extension l’envoie au backend Python local pour analyse.
       </div>
-      <div class="phg-row" id="phishguard-dropzone">Déposer un fichier .eml ici ou cliquer pour sélectionner</div>
-      <input id="phishguard-input" type="file" accept=".eml,message/rfc822" style="display:none">
+      <div class="phg-row" id="phishguard-dropzone">Déposer un fichier .eml / .msg ici ou cliquer pour sélectionner</div>
+      <input id="phishguard-input" type="file" accept=".eml,.msg,message/rfc822,application/vnd.ms-outlook" style="display:none">
       <div class="phg-row" id="phishguard-fileinfo"></div>
       <div class="phg-row" id="phishguard-status"></div>
       <div class="phg-buttons phg-row">
@@ -163,7 +135,6 @@
   optionsBtn.addEventListener('click', () => { if (chrome.runtime.openOptionsPage) chrome.runtime.openOptionsPage(); });
   dropzone.addEventListener('click', () => input.click());
   input.addEventListener('change', () => uploadFile(input.files?.[0]));
-
   ['dragenter', 'dragover'].forEach((evt) => {
     dropzone.addEventListener(evt, (e) => {
       e.preventDefault(); e.stopPropagation();

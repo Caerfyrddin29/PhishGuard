@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+
 from ..config import Settings
 from ..models import AnalysisResult, ExtractedEmailData
 from .attachment_analyzer import analyze_attachments
+from .benign_analyzer import analyze_benign
 from .domain_analyzer import analyze_domains
 from .header_analyzer import analyze_headers
 from .ml import analyze_ml
@@ -16,64 +19,86 @@ class HybridPhishingAnalyzer:
         self.settings = settings
 
     def analyze_extracted(self, extracted: ExtractedEmailData) -> AnalysisResult:
-        reasons: list[str] = []
-        sub: dict[str, int] = {}
-
-        text_s   = analyze_text(extracted)
-        hdr_s    = analyze_headers(extracted)
-        url_s    = analyze_urls(extracted)
-        att_s    = analyze_attachments(extracted)
-        ml_s     = analyze_ml(extracted, self.settings)
-        domain_s = analyze_domains(extracted, self.settings)
-        rep_s    = analyze_reputation(extracted)
-
-        sub["text"]        = text_s.score
-        sub["headers"]     = hdr_s.score
-        sub["url"]         = url_s.score
-        sub["attachments"] = att_s.score
-        sub["ml"]          = ml_s.score
-        sub["domain"]      = domain_s.score
-        sub["reputation"]  = rep_s.score
-
-        reasons.extend(text_s.reasons)
-        reasons.extend(hdr_s.reasons)
-        reasons.extend(url_s.reasons)
-        reasons.extend(att_s.reasons)
-        reasons.extend(ml_s.reasons)
-        reasons.extend(domain_s.reasons)
-        reasons.extend(rep_s.reasons)
-
-        total = min(100, sum(sub.values()))
-        extraction_ok = bool(
-            extracted.sender or extracted.subject
-            or extracted.body_text or extracted.body_html
-        )
-
+        extraction_ok = bool(extracted.sender or extracted.subject or extracted.body_text or extracted.body_html)
         if not extraction_ok:
             return AnalysisResult(
                 verdict="inconclusive",
                 score=2,
                 confidence="low",
                 analysis_status="inconclusive",
-                sub_scores=sub,
-                reasons=["Extraction failed or empty message."] + reasons,
-                indicators={"ml_probability": ml_s.probability},
+                sub_scores={},
+                reasons=["Extraction failed or empty message."],
+                indicators={},
             )
 
-        if total >= 70:
-            verdict, confidence = "phishing", "high"
-        elif total >= 40:
+        with ThreadPoolExecutor(max_workers=7) as ex:
+            futures = {
+                "text": ex.submit(analyze_text, extracted),
+                "headers": ex.submit(analyze_headers, extracted),
+                "url": ex.submit(analyze_urls, extracted),
+                "attachments": ex.submit(analyze_attachments, extracted),
+                "ml": ex.submit(analyze_ml, extracted, self.settings),
+                "domain": ex.submit(analyze_domains, extracted, self.settings),
+                "reputation": ex.submit(analyze_reputation, extracted),
+                "benign": ex.submit(analyze_benign, extracted),
+            }
+            results = {name: fut.result() for name, fut in futures.items()}
+
+        sub = {
+            "text": results["text"].score,
+            "headers": results["headers"].score,
+            "url": results["url"].score,
+            "attachments": results["attachments"].score,
+            "ml": results["ml"].score,
+            "domain": results["domain"].score,
+            "reputation": results["reputation"].score,
+            "benign": -results["benign"].score,
+        }
+
+        reasons: list[str] = []
+        for key in ("text", "headers", "url", "attachments", "ml", "domain", "reputation", "benign"):
+            reasons.extend(results[key].reasons)
+
+        risk_total = sum(v for k, v in sub.items() if k != "benign")
+        trust_total = results["benign"].score
+        net_total = max(0, min(100, risk_total - trust_total))
+
+        structural_flag = (
+            results["reputation"].score >= 30
+            or results["domain"].score >= 20
+            or results["attachments"].score >= 20
+            or any(
+                "Brand impersonation" in r
+                or "Homoglyph" in r
+                or "Display name spoofing" in r
+                or "IP-based URL" in r
+                or "Forged reply-chain" in r
+                for r in reasons
+            )
+        )
+
+        forged_reply_chain = any("Forged reply-chain" in r for r in reasons)
+
+        if (structural_flag and net_total >= 70) or (forged_reply_chain and net_total >= 45):
+            verdict, confidence = "phishing", ("high" if net_total >= 70 else "medium")
+        elif net_total >= 35:
             verdict, confidence = "suspicious", "medium"
         else:
             verdict = "legit"
-            confidence = "low" if total < 15 else "medium"
+            confidence = "low" if net_total < 15 else "medium"
 
         return AnalysisResult(
             verdict=verdict,
-            score=total,
+            score=net_total,
             confidence=confidence,
             analysis_status="ok",
             sub_scores=sub,
-            reasons=reasons[:40],
-            indicators={"ml_probability": ml_s.probability, "urls": extracted.urls},
+            reasons=reasons[:50],
+            indicators={
+                "ml_probability": getattr(results["ml"], "probability", None),
+                "urls": extracted.urls,
+                "risk_total": risk_total,
+                "trust_total": trust_total,
+                "structural_flag": structural_flag,
+            },
         )

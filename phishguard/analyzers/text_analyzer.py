@@ -325,17 +325,17 @@ def analyze_text(extracted: ExtractedEmailData) -> TextSignals:
     # High-weight phrase hits (3 pts each, cap 30)
     high_hits = _count_hits(lower, _HIGH_WEIGHT)
     if high_hits:
-        score += min(30, 3 * len(high_hits))
+        score += min(25, 3 * len(high_hits))
         reasons.append(
             f"[text] High-risk phrases ({len(high_hits)}): "
             f"{', '.join(high_hits[:5])}"
         )
 
-    # Medium-weight keyword hits (2 pts each, cap 20, deduplicate against high)
+    # Medium-weight keyword hits (2 pts each, cap 12, deduplicate against high)
     high_set = set(high_hits)
     med_hits = [w for w in _count_hits(lower, _MEDIUM_WEIGHT) if w not in high_set]
     if med_hits:
-        score += min(20, 2 * len(med_hits))
+        score += min(12, 2 * len(med_hits))
         reasons.append(
             f"[text] Suspicious keywords ({len(med_hits)}): "
             f"{', '.join(med_hits[:8])}"

@@ -1,9 +1,16 @@
+# Core API / validation
 fastapi>=0.100
 uvicorn>=0.23
 python-multipart>=0.0.7
 pydantic>=2.0
+
+# Parsing / extraction
 beautifulsoup4>=4.12
+extract-msg>=0.45
+# RDAP is queried via Python stdlib urllib; no extra client dependency required
+
+# Optional local ML analyzer support
+# The code works without a trained model file, but these packages are needed
+# when you want the local joblib/scikit-learn model path to be usable.
 joblib>=1.3
 scikit-learn>=1.3
-extract-msg>=0.45
-python-whois>=0.8.0

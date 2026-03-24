@@ -8,6 +8,8 @@ from email.utils import getaddresses, parseaddr
 from pathlib import Path
 from typing import Optional, Tuple
 
+from bs4 import BeautifulSoup
+
 from .config import Settings
 from .models import AttachmentInfo, ExtractedEmailData
 from .utils import normalize_eml_bytes, safe_filename
@@ -27,6 +29,30 @@ def _decode_part(part: Message) -> str:
         return payload.decode(charset, errors="replace")
     except Exception:
         return payload.decode("utf-8", errors="replace")
+
+
+def _extract_urls_from_html(html: str) -> list[str]:
+    urls: list[str] = []
+    if not html:
+        return urls
+    try:
+        soup = BeautifulSoup(html, "html.parser")
+        for tag, attr in (("a", "href"), ("form", "action"), ("img", "src"), ("iframe", "src"), ("script", "src")):
+            for node in soup.find_all(tag):
+                value = (node.get(attr) or "").strip().strip('"\'')
+                if value and value not in urls:
+                    urls.append(value)
+        for meta in soup.find_all("meta"):
+            if (meta.get("http-equiv") or "").lower() == "refresh":
+                content = meta.get("content") or ""
+                m = re.search(r"url=([^;]+)$", content, re.I)
+                if m:
+                    value = m.group(1).strip().strip('"\'')
+                    if value and value not in urls:
+                        urls.append(value)
+    except Exception:
+        pass
+    return urls
 
 
 def _extract_bodies(msg: Message) -> Tuple[str, str]:
@@ -53,6 +79,11 @@ def _extract_bodies(msg: Message) -> Tuple[str, str]:
 
     body_text = "\n\n".join([t.strip() for t in text_parts if t and t.strip()]).strip()
     body_html = "\n\n".join([h.strip() for h in html_parts if h and h.strip()]).strip()
+    if body_html and not body_text:
+        try:
+            body_text = BeautifulSoup(body_html, "html.parser").get_text("\n", strip=True)
+        except Exception:
+            pass
     return body_text, body_html
 
 
@@ -160,7 +191,6 @@ class EmailFileExtractor:
         bcc = _all_addrs(h("Bcc"))
         date = h("Date")
 
-        raw_headers = ""
         if msg is not None:
             raw_headers = "".join([f"{k}: {v}\n" for (k, v) in msg.items()])
         else:
@@ -178,6 +208,9 @@ class EmailFileExtractor:
 
         all_indicator_text = (body_text or "") + "\n" + (body_html or "")
         urls, emails_found, ips_found = _extract_indicators(all_indicator_text.strip())
+        for u in _extract_urls_from_html(body_html):
+            if u not in urls:
+                urls.append(u)
 
         return ExtractedEmailData(
             file_path=filename,
@@ -201,56 +234,89 @@ class EmailFileExtractor:
 
     def _extract_attachments(self, msg: Message) -> list[AttachmentInfo]:
         out: list[AttachmentInfo] = []
+        save_to_disk = bool(self.settings.save_attachments)
         base_dir = Path(self.settings.attachments_dir)
-        base_dir.mkdir(parents=True, exist_ok=True)
+        if save_to_disk:
+            base_dir.mkdir(parents=True, exist_ok=True)
 
         for part in msg.iter_attachments():
             filename = safe_filename(part.get_filename() or "attachment.bin")
             payload = part.get_payload(decode=True) or b""
             content_type = (part.get_content_type() or "").lower()
+            saved_path = ""
 
-            target = base_dir / filename
-            if target.exists():
-                stem = target.stem
-                suf = target.suffix
-                i = 1
-                while True:
-                    cand = base_dir / f"{stem}_{i}{suf}"
-                    if not cand.exists():
-                        target = cand
-                        break
-                    i += 1
+            if save_to_disk:
+                target = base_dir / filename
+                if target.exists():
+                    stem = target.stem
+                    suf = target.suffix
+                    i = 1
+                    while True:
+                        cand = base_dir / f"{stem}_{i}{suf}"
+                        if not cand.exists():
+                            target = cand
+                            break
+                        i += 1
+                target.write_bytes(payload)
+                saved_path = str(target)
 
-            target.write_bytes(payload)
-            out.append(AttachmentInfo(filename=filename, saved_path=str(target), size_bytes=len(payload), content_type=content_type))
+            out.append(
+                AttachmentInfo(
+                    filename=filename,
+                    saved_path=saved_path,
+                    size_bytes=len(payload),
+                    content_type=content_type,
+                )
+            )
         return out
 
     def _extract_msg(self, path: Path) -> ExtractedEmailData:
-        try:
-            import extract_msg  # type: ignore
-        except Exception as e:
-            raise RuntimeError("extract-msg not installed") from e
+        import extract_msg  # type: ignore
 
-        with extract_msg.openMsg(str(path)) as m:
-            body = (m.body or "").replace("\r", " ").strip()
-            urls, emails_found, ips_found = _extract_indicators(body)
+        msg = extract_msg.Message(str(path))
+        msg_sender = parseaddr(getattr(msg, "sender", "") or "")[1] or (getattr(msg, "sender", "") or "")
+        body_text = getattr(msg, "body", "") or ""
+        body_html = getattr(msg, "htmlBody", b"") or b""
+        if isinstance(body_html, (bytes, bytearray)):
+            body_html = body_html.decode("utf-8", errors="replace")
 
-            return ExtractedEmailData(
-                file_path=str(path),
-                file_type="msg",
-                subject=(m.subject or "").strip(),
-                sender=(m.sender or "").strip(),
-                to=_all_addrs(m.to or ""),
-                cc=_all_addrs(m.cc or ""),
-                bcc=_all_addrs(m.bcc or ""),
-                date=str(m.receivedTime or "").strip(),
-                raw_headers="",
-                body_text=body,
-                body_html="",
-                urls=urls,
-                emails_found_in_body=emails_found,
-                ips_found_in_body=ips_found,
-                attachments=[],
-                technical_details={"source": "extract-msg"},
-                parse_warnings=[],
-            )
+        attachments: list[AttachmentInfo] = []
+        save_to_disk = bool(self.settings.save_attachments)
+        base_dir = Path(self.settings.attachments_dir)
+        if save_to_disk:
+            base_dir.mkdir(parents=True, exist_ok=True)
+        for att in getattr(msg, "attachments", []) or []:
+            filename = safe_filename(getattr(att, "longFilename", None) or getattr(att, "shortFilename", None) or "attachment.bin")
+            data = getattr(att, "data", b"") or b""
+            saved_path = ""
+            if save_to_disk:
+                target = base_dir / filename
+                target.write_bytes(data)
+                saved_path = str(target)
+            attachments.append(AttachmentInfo(filename=filename, saved_path=saved_path, size_bytes=len(data), content_type=""))
+
+        raw_headers = getattr(msg, "header", "") or ""
+        urls, emails_found, ips_found = _extract_indicators((body_text or "") + "\n" + (body_html or ""))
+        for u in _extract_urls_from_html(body_html):
+            if u not in urls:
+                urls.append(u)
+
+        return ExtractedEmailData(
+            file_path=path.name,
+            file_type="msg",
+            subject=getattr(msg, "subject", "") or "",
+            sender=msg_sender,
+            to=_all_addrs(getattr(msg, "to", "") or ""),
+            cc=_all_addrs(getattr(msg, "cc", "") or ""),
+            bcc=_all_addrs(getattr(msg, "bcc", "") or ""),
+            date=str(getattr(msg, "date", "") or ""),
+            raw_headers=raw_headers,
+            body_text=body_text,
+            body_html=body_html,
+            urls=urls,
+            emails_found_in_body=emails_found,
+            ips_found_in_body=ips_found,
+            attachments=attachments,
+            technical_details={"received_hops": raw_headers.lower().count("received:"), "filename": path.name},
+            parse_warnings=[],
+        )

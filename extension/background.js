@@ -1,6 +1,6 @@
 const STORAGE_KEY = 'phishguard_backend_url';
 const DEFAULT_BACKEND = 'http://127.0.0.1:8000';
-const FETCH_TIMEOUT_MS = 60000; // 60s — analysis can be slow (WHOIS + reputation)
+const FETCH_TIMEOUT_MS = 60000;
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.storage.sync.get([STORAGE_KEY], (data) => {
@@ -17,44 +17,31 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch((error) => sendResponse({ ok: false, error: normalizeError(error) }));
     return true;
   }
-
   if (message?.type === 'PHISHGUARD_GET_SETTINGS') {
     getBackendUrl()
       .then((url) => sendResponse({ ok: true, backendUrl: url }))
       .catch((error) => sendResponse({ ok: false, error: normalizeError(error) }));
     return true;
   }
-
   return false;
 });
 
 async function handleFileUpload(message) {
   const backend = await getBackendUrl();
-
-  if (!message.filename || !message.base64) {
+  if (!message.filename || !Array.isArray(message.bytes)) {
     throw new Error('Fichier incomplet ou invalide.');
   }
 
-  const binary = atob(message.base64);
-  const uint8 = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    uint8[i] = binary.charCodeAt(i);
-  }
+  const uint8 = new Uint8Array(message.bytes);
   const blob = new Blob([uint8], { type: message.mimeType || 'application/octet-stream' });
   const form = new FormData();
   form.append('file', blob, message.filename);
 
-  // FIX [08]: AbortController timeout so a hung backend doesn't freeze the UI
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-
   let response;
   try {
-    response = await fetch(`${backend}/analyze/file`, {
-      method: 'POST',
-      body: form,
-      signal: controller.signal,
-    });
+    response = await fetch(`${backend}/analyze/file`, { method: 'POST', body: form, signal: controller.signal });
   } catch (err) {
     if (err.name === 'AbortError') {
       throw new Error(`Délai dépassé (${FETCH_TIMEOUT_MS / 1000}s) — le backend ne répond pas.`);
@@ -65,10 +52,7 @@ async function handleFileUpload(message) {
   }
 
   let data = {};
-  try {
-    data = await response.json();
-  } catch (_) {}
-
+  try { data = await response.json(); } catch (_) {}
   if (!response.ok) {
     throw new Error(data?.detail || `HTTP ${response.status}`);
   }
@@ -91,6 +75,15 @@ function sanitizeApiBaseUrl(url) {
   const clean = String(url || '').trim().replace(/\/+$/, '');
   if (!/^https?:\/\//i.test(clean)) {
     throw new Error("L'URL de l'API doit commencer par http:// ou https://");
+  }
+  let parsed;
+  try {
+    parsed = new URL(clean);
+  } catch {
+    throw new Error("URL de backend invalide");
+  }
+  if (!['127.0.0.1', 'localhost'].includes(parsed.hostname)) {
+    throw new Error("Le backend d'extension doit être local: localhost ou 127.0.0.1");
   }
   return clean;
 }

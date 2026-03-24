@@ -31,3 +31,6 @@ class Settings:
 
     temp_dir: str = os.getenv("PHISHGUARD_TEMP_DIR", str(Path.cwd() / "tmp"))
     attachments_dir: str = os.getenv("PHISHGUARD_ATTACHMENTS_DIR", str(Path.cwd() / "Attachments"))
+
+    save_attachments: bool = os.getenv("PHISHGUARD_SAVE_ATTACHMENTS", "0") == "1"
+    max_upload_bytes: int = int(os.getenv("PHISHGUARD_MAX_UPLOAD_BYTES", str(10 * 1024 * 1024)))

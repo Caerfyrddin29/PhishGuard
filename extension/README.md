@@ -1,53 +1,155 @@
-# PhishGuard — Chrome Extension
+# PhishGuard Chrome Extension
 
-Adds a floating analysis panel to Gmail, Outlook, Yahoo Mail, ProtonMail, and other webmail interfaces.
+The extension provides a small upload-and-result panel on supported webmail pages.
+It does **not** parse mail directly in the browser. Instead, it sends an exported `.eml` or `.msg` file to the local PhishGuard backend.
+
+---
 
 ## What it does
 
-1. You export an email from your webmail as a `.eml` file.
-2. You drop it into the PhishGuard panel.
-3. The extension sends it to your local PhishGuard backend (`POST /analyze/file`).
-4. Results are displayed in the panel: verdict, score, sub-scores, and reasons.
+1. You export a message from your webmail as **`.eml`** or **`.msg`**.
+2. You open the PhishGuard panel on a supported page.
+3. You drop the file into the panel or choose it manually.
+4. The extension sends the file to your **local** backend at `/analyze/file`.
+5. The panel displays the verdict, score, confidence, sub-scores, and top reasons.
 
-## Sub-scores displayed
+---
 
-| Sub-score | What it checks |
-|-----------|----------------|
-| Texte | Phishing keywords and phrases (12 languages) |
-| Headers | Sender identity, DKIM/SPF/DMARC, hop count |
-| URL | Shorteners, homoglyphs, brand impersonation, TLDs |
-| Domaine | WHOIS domain age |
-| Réputation | DNSBL, URLhaus, OpenPhish, PhishTank |
-| Pièces jointes | Risky attachment extensions |
-| ML | Local ML model (if configured) |
+## Supported file types
 
-## Installation
+The current UI accepts:
+- `.eml`
+- `.msg`
 
-1. Open `chrome://extensions` in Chrome.
-2. Enable **Developer mode** (top right toggle).
-3. Click **Load unpacked**.
-4. Select the `extension/` folder from this project.
-5. The PhishGuard button will appear on supported webmail pages.
+The backend also accepts both formats directly over the API.
 
-## Configuration
+---
 
-Click **Configurer l'API** in the panel (or open the extension options) to set the backend URL.
+## What the panel shows
 
-Default: `http://127.0.0.1:8000`
+### Verdict labels
+- **Suspect (phishing)** → backend verdict `phishing`
+- **Suspect** → backend verdict `suspicious`
+- **Plutôt légitime** → backend verdict `legit`
+- **Analyse inconclusive** → backend verdict/status `inconclusive`
 
-Make sure the PhishGuard backend is running before analyzing emails:
+### Sub-scores shown in the UI
+- **Texte** → suspicious language and subject patterns
+- **Headers** → sender identity, auth failures, reply-chain inconsistencies, routing anomalies
+- **URL** → suspicious links, volume, encoding, domain patterns
+- **Domaine** → domain age / trusted-domain logic
+- **Réputation** → DNSBL, URLhaus, OpenPhish
+- **Pièces jointes** → dangerous file extensions
+- **ML** → optional machine-learning contribution
+- **Bénin** → trust signals that lower the final score
 
-```bash
-cd ..
-uvicorn api:app --reload
-```
+Important detail:
+- **Bénin** is displayed as the negative trust contribution returned by the backend.
+
+---
 
 ## Supported webmail hosts
 
-Gmail, Outlook (Office 365 + Live), Yahoo Mail, ProtonMail, Roundcube, and any host with "mail", "inbox", or "webmail" in the URL.
+The extension is intentionally restricted by `manifest.json` to these hosts:
+- `mail.google.com`
+- `outlook.office.com`
+- `outlook.live.com`
+- `mail.yahoo.com`
+- `proton.me`
+- `mail.proton.me`
+- `mail.protonmail.com`
 
-## Notes
+If you want additional hosts, update `extension/manifest.json` and test them explicitly.
 
-- Only `.eml` files are supported by the extension UI. The backend also accepts `.msg` files via direct API call.
-- The backend processes and immediately discards the uploaded file — nothing is stored permanently.
-- The extension requires the backend to be running locally. No data is sent to any external server.
+---
+
+## Installation
+
+1. Open `chrome://extensions`
+2. Enable **Developer mode**
+3. Click **Load unpacked**
+4. Select the `extension/` folder from this repository
+5. Open one of the supported webmail hosts
+6. Start your local PhishGuard backend
+
+Backend example:
+
+```bash
+uvicorn api:app --reload
+```
+
+---
+
+## Backend URL configuration
+
+The extension stores a backend URL in Chrome sync storage.
+Default:
+
+```text
+http://127.0.0.1:8000
+```
+
+Important limitation:
+- the manifest currently grants host permissions only for:
+  - `http://127.0.0.1:8000/*`
+  - `http://localhost:8000/*`
+- using another host or port requires updating `manifest.json`
+
+So in practice, the extension is meant to talk to a **local backend on port 8000** unless you also change the extension permissions.
+
+---
+
+## Data flow and privacy
+
+### Browser side
+- the extension sends the selected `.eml` / `.msg` file to your **local** backend
+- it does not upload directly to an external SaaS endpoint
+
+### Backend side
+Depending on your backend configuration:
+- the backend may perform **network reputation lookups** (DNSBL, URLhaus, OpenPhish)
+- extracted attachments are **not** stored permanently unless `PHISHGUARD_SAVE_ATTACHMENTS=1`
+- temporary `.msg` files used during parsing are deleted after processing
+
+So the accurate statement is:
+- **file upload stays local to your backend**, but the backend may still consult external reputation sources if enabled
+
+---
+
+## Result interpretation
+
+The score is not a raw “probability of phishing”.
+The backend uses a calibrated model that combines:
+- risk analyzers
+- trust / benign signals
+- structural flags
+
+That means:
+- a message can be labeled `phishing` with a moderate-looking numeric score if a strong structural signal is present
+- a noisy newsletter with many links can remain `legit` if it has strong benign/authenticated signals
+
+---
+
+## Troubleshooting
+
+### The panel appears but upload fails
+Check that:
+- the backend is running
+- the backend URL matches the local host/port allowed by the manifest
+- CORS is not misconfigured on the backend
+
+### The panel does not appear
+Check that you are on one of the supported hosts listed above.
+
+### A custom backend URL saves but requests still fail
+That usually means the value is outside the hosts permitted by `manifest.json`.
+
+---
+
+## Files in the extension folder
+
+- `manifest.json` → extension manifest and host permissions
+- `content.js` → page UI and file-upload logic
+- `background.js` → sends the file to the backend
+- `options.html` / `options.js` → backend URL configuration page
+- `content.css` → panel styling

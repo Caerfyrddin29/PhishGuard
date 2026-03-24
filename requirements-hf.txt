@@ -1,3 +1,5 @@
+# Optional Hugging Face runtime
+# Install this only if you explicitly enable PHISHGUARD_ENABLE_HF_ML=1.
 transformers>=4.40
 torch>=2.1
 datasets>=2.18
