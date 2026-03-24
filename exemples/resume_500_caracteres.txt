@@ -1,1 +1,4 @@
-PhishGuard est un outil de détection de mails de phishing. Il analyse des emails au format .eml ou .msg à l'aide de plusieurs modules : texte, en-têtes, liens, réputation et cohérence globale. Le projet attribue ensuite un score, un verdict et des raisons détaillées. L'objectif est de proposer un outil à la fois utile, explicable et reproductible, pour mieux comprendre et repérer les tentatives de fraude par email.
+PhishGuard est un outil de détection de mails de phishing. 
+Il analyse des emails au format .eml ou .msg à l'aide de plusieurs modules : texte, en-têtes, liens, réputation et cohérence globale. 
+Le projet attribue ensuite un score, un verdict et des raisons détaillées. 
+L'objectif est de proposer un outil à la fois utile, explicable et reproductible, pour mieux comprendre et repérer les tentatives de fraude par email.
