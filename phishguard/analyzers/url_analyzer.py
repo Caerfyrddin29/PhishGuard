@@ -38,16 +38,27 @@ _SUSPICIOUS_TLDS = {
 _BRAND_OFFICIAL: dict[str, list[str]] = {
     "paypal":           ["paypal.com"],
     "amazon":           ["amazon.com", "amazon.fr", "amazon.co.uk", "amazon.de",
-                         "amazon.es", "amazon.it", "amazon.ca", "amazon.co.jp"],
-    "apple":            ["apple.com", "icloud.com", "itunes.com"],
-    "microsoft":        ["microsoft.com", "microsoftonline.com", "live.com",
-                         "outlook.com", "office.com", "office365.com"],
-    "google":           ["google.com", "google.fr", "google.co.uk", "gmail.com",
-                         "googlemail.com", "googleapis.com", "gstatic.com"],
-    "netflix":          ["netflix.com"],
-    "facebook":         ["facebook.com", "fb.com", "meta.com"],
-    "instagram":        ["instagram.com", "cdninstagram.com"],
-    "twitter":          ["twitter.com", "x.com", "twimg.com"],
+                         "amazon.es", "amazon.it", "amazon.ca", "amazon.co.jp",
+                         "amazontrust.com", "amazonwebservices.com", "awsstatic.com",
+                         "aws.amazon.com"],
+    "apple":            ["apple.com", "icloud.com", "itunes.com", "mzstatic.com"],
+    "microsoft":        ["microsoft.com", "microsoftonline.com", "microsoftstore.com",
+                         "live.com", "outlook.com", "office.com", "office365.com",
+                         "windowsupdate.com", "bing.com", "skype.com",
+                         "azure.com", "azurewebsites.net", "msn.com"],
+    "google":           ["google.com", "google.fr", "google.co.uk", "google.de",
+                         "google.es", "google.it", "google.ca", "google.co.jp",
+                         "gmail.com", "googlemail.com", "googleapis.com",
+                         "gstatic.com", "googleusercontent.com", "googlegroups.com",
+                         "googlesource.com", "googletagmanager.com", "googlevideo.com",
+                         "googleadservices.com", "doubleclick.net", "youtube.com",
+                         "youtu.be"],
+    "netflix":          ["netflix.com", "nflxext.com", "nflximg.net"],
+    "facebook":         ["facebook.com", "fb.com", "meta.com", "fbcdn.net",
+                         "instagram.com", "cdninstagram.com", "whatsapp.com",
+                         "whatsapp.net"],
+    "instagram":        ["instagram.com", "cdninstagram.com", "fb.com"],
+    "twitter":          ["twitter.com", "x.com", "twimg.com", "t.co"],
     "linkedin":         ["linkedin.com", "licdn.com"],
     "dropbox":          ["dropbox.com", "dropboxusercontent.com"],
     "docusign":         ["docusign.com", "docusign.net"],
@@ -109,18 +120,21 @@ def _registrable_domain(domain: str) -> str:
 
 def _check_brand_impersonation(domain: str) -> str | None:
     """
-    BUG FIX: use word-boundary-aware matching.
-    Instead of `brand in domain` (catches 'ups' in 'groups'),
-    we check that the brand appears as a full token in the domain
-    (split by dots and hyphens).
+    Check if a brand name appears as a complete token in the domain
+    (split on dots and hyphens) but the domain is not the brand's official domain.
+
+    Uses token-only matching to avoid false positives:
+      - 'pokeamazon.net'  → tokens={'pokeamazon','net'}  → 'amazon' NOT a token → no hit ✓
+      - 'amazon-login.com'→ tokens={'amazon','login','com'} → 'amazon' IS a token → hit ✓
+      - 'pineapple.com'  → tokens={'pineapple','com'} → 'apple' NOT a token → no hit ✓
     """
     reg = _registrable_domain(domain)
-    # Tokenise the domain into parts for whole-word matching
+    # Split on both dots and hyphens to get individual tokens
     tokens = set(re.split(r"[.\-]", domain.lower()))
 
     for brand, official in _BRAND_OFFICIAL.items():
-        # Brand must appear as a complete token (not a substring of a token)
-        if brand in tokens or brand in reg:
+        # Brand must appear as an EXACT token — never as a substring of a token
+        if brand in tokens:
             official_regs = {_registrable_domain(d) for d in official}
             if reg not in official_regs:
                 return f"'{brand}' in domain '{domain}' but not official"

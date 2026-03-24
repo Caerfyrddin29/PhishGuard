@@ -6,6 +6,7 @@ from .attachment_analyzer import analyze_attachments
 from .domain_analyzer import analyze_domains
 from .header_analyzer import analyze_headers
 from .ml import analyze_ml
+from .reputation_analyzer import analyze_reputation
 from .text_analyzer import analyze_text
 from .url_analyzer import analyze_urls
 
@@ -24,6 +25,7 @@ class HybridPhishingAnalyzer:
         att_s    = analyze_attachments(extracted)
         ml_s     = analyze_ml(extracted, self.settings)
         domain_s = analyze_domains(extracted, self.settings)
+        rep_s    = analyze_reputation(extracted)
 
         sub["text"]        = text_s.score
         sub["headers"]     = hdr_s.score
@@ -31,6 +33,7 @@ class HybridPhishingAnalyzer:
         sub["attachments"] = att_s.score
         sub["ml"]          = ml_s.score
         sub["domain"]      = domain_s.score
+        sub["reputation"]  = rep_s.score
 
         reasons.extend(text_s.reasons)
         reasons.extend(hdr_s.reasons)
@@ -38,6 +41,7 @@ class HybridPhishingAnalyzer:
         reasons.extend(att_s.reasons)
         reasons.extend(ml_s.reasons)
         reasons.extend(domain_s.reasons)
+        reasons.extend(rep_s.reasons)
 
         total = min(100, sum(sub.values()))
         extraction_ok = bool(

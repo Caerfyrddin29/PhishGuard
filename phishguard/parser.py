@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import email
 import re
 from email import policy
 from email.message import Message

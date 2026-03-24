@@ -112,6 +112,7 @@
         URL: ${escapeHtml(comp.url ?? 0)} |
         Headers: ${escapeHtml(comp.headers ?? 0)} |
         Domaine: ${escapeHtml(comp.domain ?? 0)} |
+        Réputation: ${escapeHtml(comp.reputation ?? 0)} |
         Pièces jointes: ${escapeHtml(comp.attachments ?? 0)} |
         ML: ${escapeHtml(comp.ml ?? 0)}
       </div>

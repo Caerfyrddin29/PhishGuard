@@ -3,6 +3,7 @@ from __future__ import annotations
 import concurrent.futures
 import datetime
 import re
+import time
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
@@ -24,7 +25,6 @@ _TRUSTED_DOMAINS = {
     "gouv.fr", "impots.gouv.fr", "ameli.fr", "caf.fr", "service-public.fr",
     "sendgrid.net", "mailchimp.com", "mailgun.org", "constantcontact.com",
     "salesforce.com", "marketo.net", "hubspot.com",
-    "news.lahalle.com", "laposte.net", "orange.fr",
 }
 
 _YOUNG_THRESHOLD_DAYS = 180
@@ -152,7 +152,6 @@ def analyze_domains(extracted: ExtractedEmailData, settings: Settings) -> Domain
     young_domains: list[str] = []
     failed_lookup: list[str] = []
 
-    import time
     wall_start = time.monotonic()
 
     for domain in domains_to_check:

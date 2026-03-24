@@ -20,16 +20,21 @@ extractor = EmailFileExtractor(settings=settings)
 analyzer = HybridPhishingAnalyzer(settings=settings)
 
 app = FastAPI(title="PhishGuard API", version="3.0.0")
-_CORS_ORIGINS = [
-    o.strip()
-    for o in os.getenv("PHISHGUARD_CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
-    if o.strip()
-]
+# The extension's service worker sends Origin: chrome-extension://...
+# Specific origin allowlists don't cover that. Since the API runs locally
+# and doesn't use cookies/sessions, allow_credentials=False + wildcard is correct.
+# Users who want to restrict origins can set PHISHGUARD_CORS_ORIGINS.
+_CORS_ORIGINS_ENV = os.getenv("PHISHGUARD_CORS_ORIGINS", "")
+_CORS_ORIGINS: list[str] = (
+    [o.strip() for o in _CORS_ORIGINS_ENV.split(",") if o.strip()]
+    if _CORS_ORIGINS_ENV
+    else ["*"]
+)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_CORS_ORIGINS,
-    allow_credentials=True,
+    allow_credentials=False,   # must be False when allow_origins=["*"]
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -175,13 +180,14 @@ def analyze_components(payload: ComponentsRequest):
         emails_found_in_body=[],
         ips_found_in_body=[],
         attachments=[],
-        technical_details={"source": "components_endpoint"},
+        technical_details={"source": "components_endpoint", "received_hops": -1},
         parse_warnings=[],
     )
     result = analyzer.analyze_extracted(extracted)
     return {
         "extracted_email": _to_jsonable(extracted),
         "analysis_result": _to_jsonable(result),
+        "extraction_warnings": [],
         "analysis_status": result.analysis_status,
         "confidence": result.confidence,
     }

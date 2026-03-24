@@ -14,6 +14,7 @@ class AttachmentSignals:
 _RISKY_EXT = {
     ".exe", ".js", ".vbs", ".scr", ".bat", ".cmd", ".iso", ".img", ".lnk", ".jar",
     ".ps1", ".hta", ".msi", ".docm", ".xlsm",
+    ".zip", ".7z", ".rar",  # archives commonly used to deliver malware payloads
 }
 
 

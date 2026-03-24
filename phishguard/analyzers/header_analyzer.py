@@ -114,7 +114,10 @@ def _check_display_name_spoofing(
     domain = _sender_domain(sender_email)
 
     for brand, legit_domains in _BRAND_DOMAINS.items():
-        if brand in display_name:
+        # Use word-boundary regex so 'apple' doesn't match 'pineapple',
+        # and 'ing direct' matches as a phrase. re.escape handles spaces/dots.
+        pattern = r"\b" + re.escape(brand) + r"\b"
+        if re.search(pattern, display_name):
             if not any(
                 domain == d or domain.endswith("." + d)
                 for d in legit_domains
@@ -201,6 +204,9 @@ def _check_auth_results(raw_headers: str) -> list[tuple[str, int]]:
 
 def _check_hop_anomalies(raw_headers: str, hop_count: int) -> list[str]:
     issues: list[str] = []
+    # hop_count == -1 means "not applicable" (e.g. /analyze/components virtual email)
+    if hop_count < 0:
+        return issues
     if hop_count == 0:
         issues.append("[header] No Received headers — possibly hand-crafted")
         return issues

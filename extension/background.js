@@ -1,5 +1,6 @@
 const STORAGE_KEY = 'phishguard_backend_url';
 const DEFAULT_BACKEND = 'http://127.0.0.1:8000';
+const FETCH_TIMEOUT_MS = 60000; // 60s — analysis can be slow (WHOIS + reputation)
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.storage.sync.get([STORAGE_KEY], (data) => {
@@ -43,10 +44,25 @@ async function handleFileUpload(message) {
   const form = new FormData();
   form.append('file', blob, message.filename);
 
-  const response = await fetch(`${backend}/analyze/file`, {
-    method: 'POST',
-    body: form
-  });
+  // FIX [08]: AbortController timeout so a hung backend doesn't freeze the UI
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+  let response;
+  try {
+    response = await fetch(`${backend}/analyze/file`, {
+      method: 'POST',
+      body: form,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new Error(`Délai dépassé (${FETCH_TIMEOUT_MS / 1000}s) — le backend ne répond pas.`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   let data = {};
   try {
