@@ -31,4 +31,5 @@ Elle a surtout servi à :
 - aider à clarifier certaines explications techniques.
 
 L'IA n'a pas remplacé le travail de compréhension, de validation, de test ni les décisions techniques prises sur le projet.
-Toutes les propositions conservées ont été relues, comprises et adaptées.
+Toutes les propositions conservées ont été relues, comprises et adaptées. 
+En aucun cas l'IA n'a servi à modifier ou générer du code pour ce projet.
