@@ -11,16 +11,16 @@ PhishGuard suit un pipeline d'analyse d'emails :
 
 ## Fichiers principaux
 
-### `main.py`
+### `sources/main.py`
 Point d'entrée principal du projet pour la ligne de commande.
 
-### `api.py`
+### `sources/api.py`
 Définit l'API FastAPI, les modèles d'entrée et les endpoints de l'application.
 
-### `cli.py`
+### `sources/cli.py`
 Contient la logique de lancement en ligne de commande pour analyser directement un fichier email.
 
-### `phishguard/parser.py`
+### `sources/phishguard/parser.py`
 Extrait les informations principales d'un email :
 - sujet ;
 - expéditeur ;
@@ -30,7 +30,7 @@ Extrait les informations principales d'un email :
 - liens ;
 - pièces jointes.
 
-### `phishguard/analyzers/`
+### `sources/phishguard/analyzers/`
 Répertoire regroupant les modules d'analyse.
 
 Exemples :
@@ -42,10 +42,10 @@ Exemples :
 - `reputation_analyzer.py` : réputation de certaines ressources externes ;
 - `hybrid.py` : combinaison finale des résultats.
 
-### `extension/`
+### `sources/extension/`
 Contient l'extension navigateur destinée à envoyer un fichier exporté vers le backend local.
 
-### `tests/`
+### `test/`
 Contient les scripts de tests automatiques du projet.
 
 ## Choix de conception

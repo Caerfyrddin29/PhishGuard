@@ -1,7 +1,49 @@
-Code source du projet :
-GNU General Public License version 3 or later (GPL v3+)
+PhishGuard
 
-Documentation, textes, présentations et contenus rédigés :
-Creative Commons Attribution - ShareAlike (CC BY-SA)
+Auteurs :
+Myrddin Bellion
+Ilyan Kassous
 
-Le projet est distribué selon les règles attendues pour les Trophées NSI 2026.
+Licence du projet
+
+1. Code source
+L’ensemble du code source du projet PhishGuard est distribué sous licence GNU General Public License version 3 ou ultérieure (GPL v3+).
+
+Est autorisé :
+- l’utilisation du code ;
+- l’étude de son fonctionnement ;
+- sa modification ;
+- sa redistribution.
+
+Conditions à respecter :
+- toute redistribution d’une version modifiée doit rester sous licence GPL v3+ ;
+- le code est fourni sans garantie.
+
+Texte de référence :
+GNU General Public License, version 3, ou toute version ultérieure.
+
+2. Textes et documentation
+Les éléments textuels du projet, notamment la documentation, la présentation, les explications et les contenus rédigés, sont distribués sous licence Creative Commons Attribution - ShareAlike (CC BY-SA).
+
+Est autorisé :
+- la copie des textes ;
+- leur partage ;
+- leur adaptation ;
+- leur réutilisation.
+
+Conditions à respecter :
+- la source doit être créditée ;
+- toute version modifiée ou adaptée doit être repartagée sous la même licence.
+
+Texte de référence :
+Creative Commons Attribution-ShareAlike.
+
+3. Objet de ce choix
+Conformément au règlement des Trophées NSI, le projet est placé sous licence libre afin de pouvoir être testé, utilisé, adapté et amélioré.
+
+4. Absence de garantie
+Le projet est fourni sans garantie d’aucune sorte. Les auteurs ne peuvent être tenus responsables d’un usage inadapté ou d’éventuels dysfonctionnements.
+
+5. Auteurs du projet
+Myrddin Bellion
+Ilyan Kassous
